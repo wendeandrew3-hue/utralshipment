@@ -5,7 +5,7 @@ import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import cors from 'cors';
 import { config } from './config';
-import { pool, migrate } from './db';
+import { pool, migrate, ensureBootstrapAdmin } from './db';
 import authRoutes from './routes/auth';
 import trackingRoutes from './routes/tracking';
 import portalRoutes from './routes/portal';
@@ -14,6 +14,7 @@ import adminRoutes from './routes/admin';
 
 async function main() {
   await migrate();
+  await ensureBootstrapAdmin();
 
   const app = express();
   app.set('trust proxy', 1);

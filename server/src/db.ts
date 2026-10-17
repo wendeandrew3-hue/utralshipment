@@ -28,3 +28,24 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+
+import bcrypt from 'bcryptjs';
+
+/**
+ * One-time first-admin bootstrap.
+ * Runs only when admin_users is empty AND ADMIN_EMAIL + ADMIN_PASSWORD are set.
+ * After the first admin exists, this never touches anything again, so the
+ * env vars can be removed from the dashboard once setup is done.
+ */
+export async function ensureBootstrapAdmin(): Promise<void> {
+  const { ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) return;
+  const existing = await pool.query('SELECT 1 FROM admin_users LIMIT 1');
+  if (existing.rowCount && existing.rowCount > 0) return;
+  const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+  await pool.query(
+    'INSERT INTO admin_users (email, password_hash, full_name, role) VALUES ($1, $2, $3, $4)',
+    [ADMIN_EMAIL.toLowerCase(), hash, 'Administrator', 'superadmin']
+  );
+  console.log(`First admin created: ${ADMIN_EMAIL}`);
+}
