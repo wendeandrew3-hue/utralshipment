@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "trailingSlash": false,
+  "framework": "vite",
+  "buildCommand": "npm install --prefix server && npm run build --prefix client",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/index.ts": { "maxDuration": 30 }
+  }
+}
