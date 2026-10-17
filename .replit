@@ -1,0 +1,11 @@
+run = "npm run setup && npm run dev"
+entrypoint = "server/src/index.ts"
+modules = ["nodejs-20", "postgresql-16"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "npm run setup && npm run build && npm run start"]
+build = ["sh", "-c", "npm run setup && npm run build"]
+deploymentTarget = "cloudrun"
