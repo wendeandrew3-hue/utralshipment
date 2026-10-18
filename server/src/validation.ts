@@ -29,16 +29,18 @@ export const profileSchema = z.object({
 
 export const shipmentCreateSchema = z.object({
   user_email: email.optional().or(z.literal('')),
-  sender_name: z.string().trim().min(2).max(120),
-  sender_contact: z.string().trim().min(3).max(160),
+  sender_name: z.string().trim().min(2).max(120).optional().or(z.literal('')),
+  sender_contact: z.string().trim().max(160).optional().or(z.literal('')),
   recipient_name: z.string().trim().min(2).max(120),
-  recipient_contact: z.string().trim().min(3).max(160),
+  recipient_contact: z.string().trim().max(160).optional().or(z.literal('')),
   origin: z.string().trim().min(2).max(120),
   destination: z.string().trim().min(2).max(120),
   service_type: z.enum(['air_freight', 'sea_freight', 'road_transport', 'express', 'standard']).default('standard'),
   package_description: z.string().trim().max(500).optional().or(z.literal('')),
   weight_kg: z.number().positive().max(50000).optional().nullable(),
   estimated_delivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  initial_status: z.enum(STATUSES).optional(),
+  admin_notes: z.string().trim().max(2000).optional().or(z.literal('')),
 });
 
 export const shipmentUpdateSchema = shipmentCreateSchema.partial();
@@ -72,12 +74,23 @@ export const paymentSchema = z.object({
 });
 
 export const chatStartSchema = z.object({
-  name: z.string().trim().min(2).max(100),
+  name: z.string().trim().min(2).max(100).optional().or(z.literal('')),
   email: email.optional().or(z.literal('')),
+  phone: z.string().trim().max(30).optional().or(z.literal('')),
 });
 
 export const chatMessageSchema = z.object({
   body: z.string().trim().min(1).max(2000),
+});
+
+export const accountUpdateSchema = z.object({
+  email,
+  full_name: z.string().trim().min(2).max(120),
+});
+
+export const passwordChangeSchema = z.object({
+  current_password: z.string().min(1),
+  new_password: password,
 });
 
 export function validate<T>(schema: z.ZodType<T>, data: unknown): T | { error: string } {

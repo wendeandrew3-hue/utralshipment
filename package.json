@@ -10,7 +10,6 @@
     "vercel-build": "npm run build --prefix client"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cors": "^2.8.17",
@@ -18,9 +17,11 @@
     "@types/express-session": "^1.18.4",
     "@types/node": "^22.5.0",
     "@types/pg": "^8.11.6",
+    "concurrently": "^9.0.1",
     "typescript": "^5.5.4"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "bcryptjs": "^2.4.3",
     "connect-pg-simple": "^9.0.1",
     "cors": "^2.8.5",

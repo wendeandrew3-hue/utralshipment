@@ -24,6 +24,7 @@ import Customers from './pages/admin/Customers';
 import ChatInbox from './pages/admin/ChatInbox';
 import Analytics from './pages/admin/Analytics';
 import AuditLog from './pages/admin/AuditLog';
+import Settings from './pages/admin/Settings';
 
 export default function App() {
   return (
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="customers" element={<Customers />} />
           <Route path="chat" element={<ChatInbox />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="settings" element={<Settings />} />
           <Route path="audit" element={<AuditLog />} />
         </Route>
       </Routes>

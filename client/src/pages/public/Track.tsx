@@ -78,7 +78,7 @@ export default function Track() {
                 <div className="flex justify-between gap-4"><dt className="text-slate-500">Weight</dt><dd className="text-right font-medium">{shipment.weight_kg ? `${shipment.weight_kg} kg` : '—'}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-slate-500">Registered</dt><dd className="text-right font-medium">{fmtDate(shipment.created_at)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-slate-500">Estimated delivery</dt><dd className="text-right font-medium">{shipment.delivered_at ? 'Delivered' : fmtDate(shipment.estimated_delivery)}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">Recipient</dt><dd className="text-right font-medium">{shipment.recipient_name} ({shipment.recipient_contact})</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-slate-500">Recipient</dt><dd className="text-right font-medium">{shipment.recipient_name}{shipment.recipient_contact ? ` (${shipment.recipient_contact})` : ''}</dd></div>
               </dl>
             </div>
 

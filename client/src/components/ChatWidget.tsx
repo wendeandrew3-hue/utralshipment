@@ -9,6 +9,7 @@ export default function ChatWidget() {
   const [started, setStarted] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [body, setBody] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -46,7 +47,7 @@ export default function ChatWidget() {
     setBusy(true);
     setError('');
     try {
-      const r = await api.post<any>('/api/chat/conversations', { name, email });
+      const r = await api.post<any>('/api/chat/conversations', { name, email, phone });
       setConversationId(r.conversation.id);
       setStarted(true);
     } catch (e: any) {
@@ -143,14 +144,15 @@ export default function ChatWidget() {
 
       {!started ? (
         <div className="space-y-2 border-t border-slate-200 p-4">
-          <input className="input" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" placeholder="Your name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="input" placeholder="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input className="input" placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button
             className="btn-primary w-full"
-            disabled={busy || name.trim().length < 2}
+            disabled={busy}
             onClick={startConversation}
           >
-            {busy ? 'Starting…' : 'Start Chat'}
+            {busy ? 'Starting…' : 'Start Chat — no account needed'}
           </button>
         </div>
       ) : (

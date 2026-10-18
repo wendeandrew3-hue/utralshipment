@@ -2,22 +2,23 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { chatLimiter } from '../middleware';
 import { chatStartSchema, chatMessageSchema, validate } from '../validation';
+import { getSettings } from '../settings';
 
 const router = Router();
-
-async function getSetting(key: string): Promise<string> {
-  const result = await pool.query('SELECT value FROM app_settings WHERE key = $1', [key]);
-  return result.rows[0]?.value ?? 'false';
-}
 
 function guestToken(req: Request): string | null {
   return (req.session && (req.session as any).chatToken) || null;
 }
 
-// Customer-facing chat status
+// Customer-facing chat status. Identity comes from Settings (Abigail by default).
 router.get('/status', async (req: Request, res: Response) => {
-  const online = (await getSetting('chat_online')) === 'true';
-  res.json({ online, agentName: 'Abigail', email: 'Utralshipment@gmail.com', phone: '+1 201-603-2142' });
+  const values = await getSettings();
+  res.json({
+    online: values.chat_online === 'true',
+    agentName: values.support_agent_name || 'Abigail',
+    email: values.support_email || 'Utralshipment@gmail.com',
+    phone: values.support_phone || '+1 201-603-2142',
+  });
 });
 
 // Start or resume a conversation
@@ -52,9 +53,9 @@ router.post('/conversations', async (req: Request, res: Response) => {
     : null;
 
   const created = await pool.query(
-    `INSERT INTO support_conversations (user_id, guest_token, customer_name, customer_email)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [userId, token, user?.full_name || data.name, user?.email || data.email || null]
+    `INSERT INTO support_conversations (user_id, guest_token, customer_name, customer_email, customer_phone)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [userId, token, user?.full_name || data.name || 'Guest visitor', user?.email || data.email || null, data.phone || null]
   );
   res.json({ conversation: created.rows[0] });
 });

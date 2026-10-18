@@ -4,8 +4,10 @@ export default {
   theme: {
     extend: {
       colors: {
-        navy: { 900: '#082347', 800: '#0A2D5E', 700: '#123B77', 600: '#1B4D94', 100: '#E8EEF7' },
+        navy: { 950: '#041226', 900: '#082347', 800: '#0A2D5E', 700: '#123B77', 600: '#1B4D94', 100: '#E8EEF7' },
         accent: { DEFAULT: '#F59E0B', dark: '#D97706' },
+        royal: { 600: '#2E5BEB', 700: '#2448C9', 800: '#1D3AA6', 50: '#EEF3FE' },
+        gold: { DEFAULT: '#C9A227', light: '#E3C557', 50: '#FBF6E4', 100: '#F5EBC8' },
       },
       fontFamily: {
         display: ['Manrope', 'sans-serif'],

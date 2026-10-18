@@ -27,3 +27,93 @@ body {
 .section-title {
   @apply font-display text-3xl font-extrabold text-navy-900 md:text-4xl;
 }
+
+/* ============================================================
+   ADMIN CONSOLE DESIGN SYSTEM
+   Deep navy shell, royal blue actions, gold premium accents.
+   Scoped to .admin-shell so the public website is untouched.
+   ============================================================ */
+
+.admin-shell {
+  @apply min-h-screen bg-slate-100 font-body text-slate-800;
+}
+
+/* Sidebar (deep navy) */
+.adm-sidebar {
+  @apply flex w-64 shrink-0 flex-col bg-navy-950;
+  background-image: linear-gradient(180deg, #041226 0%, #082347 60%, #0A2D5E 100%);
+}
+.adm-navlink {
+  @apply flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-300/90 transition;
+}
+.adm-navlink:hover { @apply bg-white/5 text-white; }
+.adm-navlink-active {
+  @apply bg-royal-600 text-white shadow-md;
+}
+.adm-navlink-active:hover { @apply bg-royal-600 text-white; }
+.adm-navlink-gold {
+  @apply border-l-[3px] border-gold pl-3;
+}
+
+/* Top bar */
+.adm-topbar {
+  @apply sticky top-0 z-30 flex items-center gap-4 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur md:px-8;
+}
+
+/* Cards & panels */
+.adm-card {
+  @apply rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(8,35,71,0.06),0_8px_24px_-12px_rgba(8,35,71,0.12)];
+}
+.adm-card-title {
+  @apply font-display text-base font-bold text-navy-900;
+}
+
+/* Buttons */
+.adm-btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-royal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-royal-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+}
+.adm-btn-gold {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gold px-4 py-2.5 text-sm font-semibold text-navy-950 shadow-sm transition hover:bg-gold-light active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+}
+.adm-btn-outline {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-navy-800 shadow-sm transition hover:border-royal-600 hover:text-royal-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+}
+.adm-btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:opacity-50;
+}
+
+/* Forms */
+.adm-input {
+  @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-royal-600 focus:ring-2 focus:ring-royal-600/20;
+}
+.adm-label {
+  @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500;
+}
+.adm-select {
+  @apply w-full appearance-none rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 pr-8 text-sm text-slate-800 outline-none transition focus:border-royal-600 focus:ring-2 focus:ring-royal-600/20;
+}
+
+/* Tables */
+.adm-table { @apply w-full text-left text-sm; }
+.adm-table thead tr { @apply border-b border-slate-200 bg-slate-50/80; }
+.adm-table thead th { @apply px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-500; }
+.adm-table tbody tr { @apply border-b border-slate-100 last:border-0; }
+.adm-table tbody tr:hover { @apply bg-royal-50/40; }
+.adm-table td { @apply px-4 py-3.5 align-middle; }
+
+/* Status pills */
+.adm-pill { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide; }
+.adm-pill-green { @apply bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20; }
+.adm-pill-amber { @apply bg-amber-50 text-amber-700 ring-1 ring-amber-600/20; }
+.adm-pill-blue { @apply bg-royal-50 text-royal-700 ring-1 ring-royal-600/20; }
+.adm-pill-red { @apply bg-red-50 text-red-700 ring-1 ring-red-600/20; }
+.adm-pill-navy { @apply bg-navy-100 text-navy-800 ring-1 ring-navy-600/20; }
+.adm-pill-gold { @apply bg-gold-50 text-yellow-800 ring-1 ring-gold/40; }
+
+/* Notifications toast */
+.adm-toast-ok { @apply rounded-lg bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 ring-1 ring-emerald-600/20; }
+.adm-toast-err { @apply rounded-lg bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 ring-1 ring-red-600/20; }
+
+/* Chat bubbles (admin inbox) */
+.adm-msg-agent { @apply max-w-[75%] rounded-xl rounded-br-sm bg-royal-600 px-3.5 py-2 text-sm text-white shadow-sm; }
+.adm-msg-customer { @apply max-w-[75%] rounded-xl rounded-bl-sm border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-800 shadow-sm; }

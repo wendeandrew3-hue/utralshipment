@@ -6,7 +6,9 @@ import { authLimiter, requireAdmin, audit } from '../middleware';
 import {
   loginSchema, shipmentCreateSchema, shipmentUpdateSchema, eventSchema,
   holdSchema, releaseSchema, chargeSchema, paymentSchema, chatMessageSchema, validate, STATUSES,
+  accountUpdateSchema, passwordChangeSchema,
 } from '../validation';
+import { SETTINGS, getSettings, setSetting } from '../settings';
 
 const router = Router();
 
@@ -48,7 +50,9 @@ router.get('/overview', requireAdmin, async (req: Request, res: Response) => {
        count(*) FILTER (WHERE status IN ('Picked Up','In Transit','Arrived at Sorting Facility','Customs Clearance','Out for Delivery'))::int AS in_transit,
        count(*) FILTER (WHERE status = 'Delivered')::int AS delivered,
        count(*) FILTER (WHERE status = 'On Hold')::int AS on_hold,
-       count(*) FILTER (WHERE status = 'Delivery Exception')::int AS exceptions
+       count(*) FILTER (WHERE status = 'Delivery Exception')::int AS exceptions,
+       count(*) FILTER (WHERE status IN ('Shipment Registered','Processing'))::int AS pending,
+       count(*) FILTER (WHERE status IN ('Picked Up','In Transit','Out for Delivery'))::int AS moving
      FROM shipments`
   );
   const searchesToday = await pool.query(
@@ -74,8 +78,9 @@ router.get('/overview', requireAdmin, async (req: Request, res: Response) => {
 
 // ---- Shipments ----
 router.get('/shipments', requireAdmin, async (req: Request, res: Response) => {
-  const { status, q, page } = req.query;
-  const limit = 20;
+  const { status, q, page, from, to } = req.query;
+  const settings = await getSettings();
+  const limit = Math.min(100, Math.max(10, Number(settings.shipments_per_page) || 20));
   const offset = (Math.max(1, Number(page) || 1) - 1) * limit;
   const params: unknown[] = [];
   const where: string[] = [];
@@ -84,9 +89,21 @@ router.get('/shipments', requireAdmin, async (req: Request, res: Response) => {
     params.push(status);
     where.push(`status = $${params.length}`);
   }
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(String(from))) {
+    params.push(String(from));
+    where.push(`created_at >= $${params.length}::date`);
+  }
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(String(to))) {
+    params.push(String(to));
+    where.push(`created_at < ($${params.length}::date + interval '1 day')`);
+  }
   if (q && String(q).trim()) {
     params.push(`%${String(q).trim().toUpperCase()}%`);
-    where.push(`(UPPER(tracking_number) LIKE $${params.length} OR UPPER(recipient_name) LIKE $${params.length} OR UPPER(sender_name) LIKE $${params.length})`);
+    where.push(
+      `(UPPER(tracking_number) LIKE $${params.length} OR UPPER(recipient_name) LIKE $${params.length}` +
+      ` OR UPPER(sender_name) LIKE $${params.length} OR UPPER(destination) LIKE $${params.length}` +
+      ` OR UPPER(COALESCE(recipient_contact,'')) LIKE $${params.length} OR UPPER(COALESCE(sender_contact,'')) LIKE $${params.length})`
+    );
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -98,8 +115,20 @@ router.get('/shipments', requireAdmin, async (req: Request, res: Response) => {
   res.json({ shipments: rows.rows, total: count.rows[0].total, page: Math.max(1, Number(page) || 1), limit });
 });
 
-function generateTrackingNumber(): string {
-  return 'UTS' + crypto.randomBytes(5).toString('hex').toUpperCase();
+function trackingCodeRegex(prefix: string): RegExp {
+  const p = prefix.replace(/[^A-Za-z0-9]/g, '') || 'UTS';
+  return new RegExp(`\\b${p}[A-Z0-9]{4,}\\b`, 'g');
+}
+
+async function generateTrackingNumber(prefix: string): Promise<string> {
+  const clean = (prefix.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'UTS').slice(0, 10);
+  // Retry loop guards against the astronomically rare unique-index collision
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const candidate = clean + crypto.randomBytes(5).toString('hex').toUpperCase();
+    const clash = await pool.query('SELECT 1 FROM shipments WHERE tracking_number = $1', [candidate]);
+    if (!clash.rowCount) return candidate;
+  }
+  throw new Error('Could not generate a unique tracking number. Please retry.');
 }
 
 router.post('/shipments', requireAdmin, async (req: Request, res: Response) => {
@@ -114,22 +143,51 @@ router.post('/shipments', requireAdmin, async (req: Request, res: Response) => {
   }
 
   const admin = await currentAdmin(req);
-  const created = await pool.query(
-    `INSERT INTO shipments
-      (tracking_number, user_id, sender_name, sender_contact, recipient_name, recipient_contact,
-       origin, destination, service_type, package_description, weight_kg, estimated_delivery)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [
-      generateTrackingNumber(), userId, data.sender_name, data.sender_contact,
-      data.recipient_name, data.recipient_contact, data.origin, data.destination,
-      data.service_type, data.package_description || null, data.weight_kg ?? null,
-      data.estimated_delivery || null,
-    ]
-  );
+  const initialStatus = data.initial_status || 'Shipment Registered';
+  const prefixSetting = (await getSettings()).tracking_prefix || 'UTS';
+  const trackingNumber = await generateTrackingNumber(prefixSetting);
+
+  let created: any;
+  try {
+    const result = await pool.query(
+      `INSERT INTO shipments
+        (tracking_number, user_id, sender_name, sender_contact, recipient_name, recipient_contact,
+         origin, destination, service_type, package_description, weight_kg, estimated_delivery,
+         status, admin_notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [
+        trackingNumber, userId, data.sender_name || 'Not specified', data.sender_contact || null,
+        data.recipient_name, data.recipient_contact || null, data.origin, data.destination,
+        data.service_type, data.package_description || null, data.weight_kg ?? null,
+        data.estimated_delivery || null, initialStatus, data.admin_notes || null,
+      ]
+    );
+    created = result;
+  } catch (err: any) {
+    // Second line of defence against a code collision on the unique index
+    if (err?.code === '23505' && /tracking_number/.test(String(err?.constraint || ''))) {
+      const retry = await generateTrackingNumber(prefixSetting);
+      created = await pool.query(
+        `INSERT INTO shipments
+          (tracking_number, user_id, sender_name, sender_contact, recipient_name, recipient_contact,
+           origin, destination, service_type, package_description, weight_kg, estimated_delivery,
+           status, admin_notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [
+          retry, userId, data.sender_name || 'Not specified', data.sender_contact || null,
+          data.recipient_name, data.recipient_contact || null, data.origin, data.destination,
+          data.service_type, data.package_description || null, data.weight_kg ?? null,
+          data.estimated_delivery || null, initialStatus, data.admin_notes || null,
+        ]
+      );
+    } else {
+      throw err;
+    }
+  }
   const shipment = created.rows[0];
   await pool.query(
-    `INSERT INTO shipment_events (shipment_id, status, description) VALUES ($1,'Shipment Registered',$2)`,
-    [shipment.id, `Shipment registered from ${shipment.origin} to ${shipment.destination}`]
+    `INSERT INTO shipment_events (shipment_id, status, description) VALUES ($1,$2,$3)`,
+    [shipment.id, initialStatus, `Shipment registered from ${shipment.origin} to ${shipment.destination}`]
   );
   await audit(admin!.id, admin!.full_name, 'create', 'shipment', shipment.id, { tracking_number: shipment.tracking_number });
   res.json({ shipment });
@@ -172,16 +230,19 @@ router.put('/shipments/:id', requireAdmin, async (req: Request, res: Response) =
     `UPDATE shipments SET
        sender_name=$1, sender_contact=$2, recipient_name=$3, recipient_contact=$4,
        origin=$5, destination=$6, service_type=$7, package_description=$8,
-       weight_kg=$9, estimated_delivery=$10, user_id=$11, updated_at=now()
+       weight_kg=$9, estimated_delivery=$10, user_id=$11, admin_notes=$13, updated_at=now()
      WHERE id=$12 RETURNING *`,
     [
-      data.sender_name ?? prev.sender_name, data.sender_contact ?? prev.sender_contact,
-      data.recipient_name ?? prev.recipient_name, data.recipient_contact ?? prev.recipient_contact,
+      data.sender_name !== undefined ? (data.sender_name || 'Not specified') : prev.sender_name,
+      data.sender_contact !== undefined ? (data.sender_contact || null) : prev.sender_contact,
+      data.recipient_name ?? prev.recipient_name,
+      data.recipient_contact !== undefined ? (data.recipient_contact || null) : prev.recipient_contact,
       data.origin ?? prev.origin, data.destination ?? prev.destination,
       data.service_type ?? prev.service_type, data.package_description ?? prev.package_description,
       data.weight_kg !== undefined ? data.weight_kg : prev.weight_kg,
       data.estimated_delivery !== undefined ? data.estimated_delivery : prev.estimated_delivery,
       userId, req.params.id,
+      data.admin_notes !== undefined ? (data.admin_notes || null) : prev.admin_notes,
     ]
   );
 
@@ -343,11 +404,18 @@ router.get('/chat/conversations', requireAdmin, async (req: Request, res: Respon
   const result = await pool.query(
     `SELECT c.*,
             (SELECT count(*)::int FROM support_messages m
-              WHERE m.conversation_id = c.id AND m.sender='customer' AND m.read_by_admin = false) AS unread
-     FROM support_conversations c ORDER BY c.last_message_at DESC`
+              WHERE m.conversation_id = c.id AND m.sender='customer' AND m.read_by_admin = false) AS unread,
+            (SELECT m.body FROM support_messages m
+              WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_message
+     FROM support_conversations c
+     ${req.query.status && String(req.query.status) !== 'all'
+       ? "WHERE c.status = $1"
+       : ''}
+     ORDER BY c.last_message_at DESC`,
+    req.query.status && String(req.query.status) !== 'all' ? [String(req.query.status)] : []
   );
   const online = await pool.query(`SELECT value FROM app_settings WHERE key='chat_online'`);
-  res.json({ conversations: result.rows, online: online.rows[0].value === 'true' });
+  res.json({ conversations: result.rows, online: online.rows[0]?.value === 'true' });
 });
 
 router.post('/chat/availability', requireAdmin, async (req: Request, res: Response) => {
@@ -392,6 +460,106 @@ router.post('/chat/conversations/:id/close', requireAdmin, async (req: Request, 
   await pool.query(`UPDATE support_conversations SET status='closed' WHERE id=$1`, [req.params.id]);
   const admin = await currentAdmin(req);
   await audit(admin!.id, admin!.full_name, 'chat_close', 'conversation', req.params.id, null);
+  res.json({ ok: true });
+});
+
+router.post('/chat/conversations/:id/reopen', requireAdmin, async (req: Request, res: Response) => {
+  await pool.query(`UPDATE support_conversations SET status='open' WHERE id=$1`, [req.params.id]);
+  const admin = await currentAdmin(req);
+  await audit(admin!.id, admin!.full_name, 'chat_reopen', 'conversation', req.params.id, null);
+  res.json({ ok: true });
+});
+
+// Shipments referenced in this conversation (by tracking code mentioned in messages)
+router.get('/chat/conversations/:id/shipments', requireAdmin, async (req: Request, res: Response) => {
+  const msgs = await pool.query(
+    'SELECT body FROM support_messages WHERE conversation_id = $1', [req.params.id]
+  );
+  const prefixSetting = (await getSettings()).tracking_prefix || 'UTS';
+  const regex = trackingCodeRegex(prefixSetting);
+  const codes = new Set<string>();
+  for (const m of msgs.rows) {
+    for (const match of String(m.body).toUpperCase().matchAll(regex)) codes.add(match[0]);
+  }
+  if (!codes.size) return res.json({ shipments: [] });
+  const rows = await pool.query(
+    `SELECT s.id, s.tracking_number, s.recipient_name, s.destination, s.status, s.origin,
+            (SELECT e.status FROM shipment_events e WHERE e.shipment_id = s.id
+              ORDER BY e.created_at DESC LIMIT 1) AS latest_event_status,
+            (SELECT e.description FROM shipment_events e WHERE e.shipment_id = s.id
+              ORDER BY e.created_at DESC LIMIT 1) AS latest_event_description
+     FROM shipments s WHERE s.tracking_number = ANY($1)`,
+    [Array.from(codes)]
+  );
+  res.json({ shipments: rows.rows });
+});
+
+// ---- Settings ----
+router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
+  const values = await getSettings();
+  res.json({ settings: SETTINGS, values });
+});
+
+router.put('/settings', requireAdmin, async (req: Request, res: Response) => {
+  const updates = req.body && typeof req.body === 'object' ? req.body : {};
+  const applied: Record<string, string> = {};
+  for (const def of SETTINGS) {
+    if (!(def.key in updates)) continue;
+    const raw = updates[def.key];
+    let value: string;
+    if (def.type === 'boolean') {
+      if (typeof raw !== 'boolean') return res.status(400).json({ error: `${def.key} must be a boolean` });
+      value = String(raw);
+    } else if (def.type === 'integer') {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 1 || n > 100) return res.status(400).json({ error: `${def.key} must be a whole number between 1 and 100` });
+      value = String(n);
+    } else {
+      if (typeof raw !== 'string') return res.status(400).json({ error: `${def.key} must be text` });
+      const trimmed = raw.trim().slice(0, 300);
+      if (def.key === 'tracking_prefix' && !/^[A-Za-z0-9]{3,10}$/.test(trimmed)) {
+        return res.status(400).json({ error: 'Tracking code prefix must be 3-10 letters or digits' });
+      }
+      if (def.key === 'default_new_status' && !STATUSES.includes(trimmed as any)) {
+        return res.status(400).json({ error: 'Unknown status' });
+      }
+      value = trimmed;
+    }
+    await setSetting(def.key, value);
+    applied[def.key] = value;
+  }
+  const admin = await currentAdmin(req);
+  await audit(admin!.id, admin!.full_name, 'settings_update', 'settings', null, { keys: Object.keys(applied) });
+  const values = await getSettings();
+  res.json({ ok: true, saved: applied, values });
+});
+
+// ---- Admin account & security ----
+router.put('/account', requireAdmin, async (req: Request, res: Response) => {
+  const data = validate(accountUpdateSchema, req.body);
+  if ('error' in data) return res.status(400).json({ error: data.error });
+  const clash = await pool.query('SELECT id FROM admin_users WHERE email = $1 AND id <> $2', [data.email, req.session!.adminId]);
+  if (clash.rowCount) return res.status(400).json({ error: 'That email is already used by another administrator' });
+  const updated = await pool.query(
+    'UPDATE admin_users SET email=$1, full_name=$2 WHERE id=$3 RETURNING id, email, full_name, role',
+    [data.email, data.full_name, req.session!.adminId]
+  );
+  const admin = await currentAdmin(req);
+  await audit(admin!.id, admin!.full_name, 'account_update', 'admin', admin!.id, { email: data.email });
+  res.json({ admin: updated.rows[0] });
+});
+
+router.put('/account/password', requireAdmin, async (req: Request, res: Response) => {
+  const data = validate(passwordChangeSchema, req.body);
+  if ('error' in data) return res.status(400).json({ error: data.error });
+  const result = await pool.query('SELECT * FROM admin_users WHERE id = $1', [req.session!.adminId]);
+  const admin = result.rows[0];
+  if (!admin || !(await bcrypt.compare(data.current_password, admin.password_hash))) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  const hash = await bcrypt.hash(data.new_password, 12);
+  await pool.query('UPDATE admin_users SET password_hash=$1 WHERE id=$2', [hash, admin.id]);
+  await audit(admin.id, admin.full_name, 'password_change', 'admin', admin.id, null);
   res.json({ ok: true });
 });
 
